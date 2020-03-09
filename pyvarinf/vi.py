@@ -12,7 +12,7 @@ from torch.autograd import Variable
 from torch.nn.parameter import Parameter
 
 VariationalParameter = namedtuple('VariationalParameter',
-                                  ['mean', 'rho', 'eps'])
+                                  ['posterior_mean', 'posterior_rho', 'eps', 'prior_mean', 'prior_rho'])
 
 
 def evaluate(variational_parameter):
@@ -24,8 +24,8 @@ def evaluate(variational_parameter):
     """
     assert isinstance(variational_parameter, VariationalParameter), \
         "Incorrect type."
-    return variational_parameter.mean + \
-        (1 + variational_parameter.rho.exp()).log() * variational_parameter.eps
+    return variational_parameter.posterior_mean + \
+        (1 + variational_parameter.posterior_rho.exp()).log() * variational_parameter.eps
 
 
 def rebuild_parameters(dico, module, epsilon_setting):
@@ -53,7 +53,7 @@ def rebuild_parameters(dico, module, epsilon_setting):
     for name, p in dico.items():
         if isinstance(p, VariationalParameter):
             if p.eps is None:
-                dico[name] = p._replace(eps=Variable(p.mean.data.clone()))
+                dico[name] = p._replace(eps=Variable(p.posterior_mean.data.clone()))
             epsilon_setting(name, dico[name])
             setattr(module, name, evaluate(dico[name]))
         elif p is None:
@@ -90,11 +90,12 @@ def sub_prior_loss(dico):
     loss = 0
     for p in dico.values():
         if isinstance(p, VariationalParameter):
-            mean = p.mean
-            std = (1 + p.rho.exp()).log()
-            std_prior = prior_std(mean)
+            mean = p.posterior_mean
+            mean_prior = p.prior_mean
+            std = (1 + p.posterior_rho.exp()).log()
+            std_prior = (1 + p.prior_rho.exp()).log()
             loss += (-(std / std_prior).log() +
-                     (std.pow(2) + mean.pow(2)) /
+                     (std.pow(2) + (mean-mean_prior).pow(2)) /
                      (2 * std_prior ** 2) - 1 / 2).sum()
         else:
             loss += sub_prior_loss(p)
@@ -110,7 +111,7 @@ def sub_entropy(dico):
     entropy = 0.
     for _, p in dico.items():
         if isinstance(p, VariationalParameter):
-            std = (1 + p.rho.exp()).log()
+            std = (1 + p.posterior_rho.exp()).log()
             n = np.prod(std.size())
             entropy += std.log().sum() + .5 * n * (1 + np.log(2 * np.pi))
         else:
@@ -252,16 +253,24 @@ class Variationalize(nn.Module):
                 dico[name] = VariationalParameter(
                     Parameter(init_mean),
                     Parameter(p.data.clone().fill_(init_rho)),
-                    None)
+                    None,
+                    Parameter(init_mean.fill_(0)),
+                    Parameter(p.data.clone().fill_(init_rho)))
 
                 if learn_mean:
                     self.register_parameter(prefix + '_' + name + '_mean',
-                                            dico[name].mean)
+                                            dico[name].posterior_mean)
                 if learn_rho:
                     self.register_parameter(prefix + '_' + name + '_rho',
-                                            dico[name].rho)
+                                            dico[name].posterior_rho)
 
             to_erase.append(name)
+        
+        def _reset_for_next_task(self):
+            for name, p in self.dico.items():
+                if isinstance(p, VariationalParameter):
+                    self.dico[name].prior_mean = p.posterior_mean
+                    self.dico[name].prior_rho = p.posterior_rho
 
         for name in to_erase:
             delattr(module, name)
@@ -387,7 +396,7 @@ class Sample(nn.Module):
             if isinstance(p, VariationalParameter):
                 if p.eps is None:
                     var_dico[name] = p._replace(eps=Variable(
-                        p.mean.data.clone()))
+                        p.posterior_mean.data.clone()))
                 association.append((var_dico[name].eps,
                                     var_dico[name].eps.data.clone().normal_()))
             else:
