@@ -53,7 +53,7 @@ def rebuild_parameters(dico, module, epsilon_setting):
     for name, p in dico.items():
         if isinstance(p, VariationalParameter):
             if p.eps is None:
-                dico[name] = p._replace(eps=Variable(p.prior_mean.data.clone()))
+                dico[name] = p._replace(eps=Variable(p.posterior_mean.data.clone()))
             epsilon_setting(name, dico[name])
             setattr(module, name, evaluate(dico[name]))
         elif p is None:
@@ -94,7 +94,6 @@ def sub_prior_loss(dico):
             mean_prior = p.prior_mean
             std = (1 + p.posterior_rho.exp()).log()
             std_prior = (1 + p.prior_rho.exp()).log()
-            #std_prior = prior_std(mean_prior)
             loss += (-(std / std_prior).log() +
                      (std.pow(2) + (mean-mean_prior).pow(2)) /
                      (2 * std_prior ** 2) - 1 / 2).sum()
