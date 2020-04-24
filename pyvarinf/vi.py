@@ -93,8 +93,8 @@ def sub_prior_loss(dico):
             mean = p.posterior_mean
             mean_prior = p.prior_mean
             std = (1 + p.posterior_rho.exp()).log()
-            #std_prior = (1 + p.prior_rho.exp()).log()
-            std_prior = prior_std(mean_prior)
+            std_prior = (1 + p.prior_rho.exp()).log()
+            #std_prior = prior_std(mean_prior)
             loss += (-(std / std_prior).log() +
                      (std.pow(2) + (mean-mean_prior).pow(2)) /
                      (2 * std_prior ** 2) - 1 / 2).sum()
@@ -257,6 +257,9 @@ class Variationalize(nn.Module):
                     None,
                     Parameter(init_mean.fill_(0)),
                     Parameter(p.data.clone().fill_(init_rho)))
+
+                dico[name]['prior_mean'].requires_grad = False
+                dico[name]['prior_rho'].requires_grad = False
 
                 if learn_mean:
                     self.register_parameter(prefix + '_' + name + '_mean',
