@@ -53,7 +53,7 @@ def rebuild_parameters(dico, module, epsilon_setting):
     for name, p in dico.items():
         if isinstance(p, VariationalParameter):
             if p.eps is None:
-                dico[name] = p._replace(eps=Variable(p.posterior_mean.data.clone()))
+                dico[name] = p._replace(eps=Variable(p.prior_mean.data.clone()))
             epsilon_setting(name, dico[name])
             setattr(module, name, evaluate(dico[name]))
         elif p is None:
@@ -265,12 +265,6 @@ class Variationalize(nn.Module):
                                             dico[name].posterior_rho)
 
             to_erase.append(name)
-        
-        def _reset_for_next_task(self):
-            for name, p in self.dico.items():
-                if isinstance(p, VariationalParameter):
-                    self.dico[name].prior_mean = p.posterior_mean
-                    self.dico[name].prior_rho = p.posterior_rho
 
         for name in to_erase:
             delattr(module, name)
@@ -282,6 +276,12 @@ class Variationalize(nn.Module):
                                         mname, zero_mean,
                                         learn_mean, learn_rho)
             dico[mname] = sub_dico
+
+    def _reset_for_next_task(self):
+        for name, p in self.dico.items():
+            if isinstance(p, VariationalParameter):
+                self.dico[name].prior_mean = p.posterior_mean
+                self.dico[name].prior_rho = p.posterior_rho
 
     def set_prior(self, prior_type, **prior_parameters):
         """ Change the prior to be used.
