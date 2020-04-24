@@ -258,8 +258,8 @@ class Variationalize(nn.Module):
                     Parameter(init_mean.fill_(0)),
                     Parameter(p.data.clone().fill_(init_rho)))
 
-                dico[name]['prior_mean'].requires_grad = False
-                dico[name]['prior_rho'].requires_grad = False
+                dico[name].prior_mean.requires_grad = False
+                dico[name].prior_rho.requires_grad = False
 
                 if learn_mean:
                     self.register_parameter(prefix + '_' + name + '_mean',
